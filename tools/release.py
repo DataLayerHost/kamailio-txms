@@ -9,7 +9,7 @@ import subprocess
 
 VERSION = r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
 
-def build_release(root, project, tag, output):
+def build_release(root, project, tag, output, libtxms_version=None, libtxms_commit=None):
 	root, output = Path(root).resolve(), Path(output).resolve()
 	if project not in ("libtxms", "kamailio-txms") or not re.fullmatch(VERSION, tag):
 		raise ValueError("Use a stable MAJOR.MINOR.PATCH tag and a known project")
@@ -30,10 +30,12 @@ def build_release(root, project, tag, output):
 	digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 	metadata = {"project": project, "version": tag, "tag": tag, "commit": commit, "source_sha256": digest}
 	if project == "kamailio-txms":
-		dependency = git("show", f"{commit}:LIBTXMS_VERSION")
-		if not re.fullmatch(VERSION, dependency):
-			raise ValueError("Invalid LIBTXMS_VERSION")
-		metadata["libtxms_tag"] = dependency
+		if not libtxms_version or not re.fullmatch(VERSION, libtxms_version):
+			raise ValueError("Pass the libtxms release version resolved by CI")
+		if not libtxms_commit or not re.fullmatch(r"[0-9a-f]{40}", libtxms_commit):
+			raise ValueError("Pass the exact libtxms commit tested by CI")
+		metadata["libtxms_version"] = libtxms_version
+		metadata["libtxms_commit"] = libtxms_commit
 	(output / "release.json").write_text(json.dumps(metadata, indent=2) + "\n")
 	(output / "SHA256SUMS").write_text(f"{digest}  {archive.name}\n")
 	return metadata
@@ -44,5 +46,7 @@ if __name__ == "__main__":
 	parser.add_argument("--tag", required=True)
 	parser.add_argument("--root", default=".")
 	parser.add_argument("--output", default="dist")
+	parser.add_argument("--libtxms-version")
+	parser.add_argument("--libtxms-commit")
 	args = parser.parse_args()
-	print(json.dumps(build_release(args.root, args.project, args.tag, args.output), indent=2))
+	print(json.dumps(build_release(args.root, args.project, args.tag, args.output, args.libtxms_version, args.libtxms_commit), indent=2))

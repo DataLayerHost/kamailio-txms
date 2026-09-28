@@ -5,10 +5,32 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    outputs:
+      libtxms_version:
+        description: Tested library release version
+        value: ${{ jobs.dependency.outputs.version }}
+      libtxms_commit:
+        description: Tested library commit
+        value: ${{ jobs.dependency.outputs.commit }}
 permissions:
   contents: read
 jobs:
+  dependency:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+      commit: ${{ steps.latest.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve latest published libtxms release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/latest_libtxms.py
   core:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -20,17 +42,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: kamailio-txms
-      - name: Read tested libtxms release
-        working-directory: kamailio-txms
-        shell: bash
-        run: |
-          version="$(cat LIBTXMS_VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          echo "LIBTXMS_REF=$version" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           repository: DataLayerHost/libtxms
-          ref: ${{ env.LIBTXMS_REF }}
+          ref: ${{ needs.dependency.outputs.commit }}
           path: libtxms
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libjson-c-dev libgmime-3.0-dev
@@ -42,22 +57,18 @@ jobs:
       - run: cmake --build build -j2
       - run: ctest --test-dir build --output-on-failure
   kamailio:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           path: kamailio-txms
-      - name: Read tested libtxms release
-        working-directory: kamailio-txms
-        shell: bash
-        run: |
-          version="$(cat LIBTXMS_VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          echo "LIBTXMS_REF=$version" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           repository: DataLayerHost/libtxms
-          ref: ${{ env.LIBTXMS_REF }}
+          ref: ${{ needs.dependency.outputs.commit }}
           path: libtxms
       - uses: actions/checkout@v4
         with:
@@ -73,22 +84,18 @@ jobs:
           make -C kamailio/src -j2 all TXMS_ROOT="$PWD/kamailio-txms" TXMS_BUILD="$PWD/kamailio-txms/build" LIBTXMS_ROOT="$PWD/libtxms"
           python3 kamailio-txms/tests/sip_integration.py kamailio
   fuzz:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           path: kamailio-txms
-      - name: Read tested libtxms release
-        working-directory: kamailio-txms
-        shell: bash
-        run: |
-          version="$(cat LIBTXMS_VERSION)"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-          echo "LIBTXMS_REF=$version" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           repository: DataLayerHost/libtxms
-          ref: ${{ env.LIBTXMS_REF }}
+          ref: ${{ needs.dependency.outputs.commit }}
           path: libtxms
       - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libjson-c-dev libgmime-3.0-dev
       - run: |
@@ -104,4 +111,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m pip install pyyaml
       - run: python tests/test_release.py

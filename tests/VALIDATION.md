@@ -36,13 +36,9 @@ transaction-ID result contract before deployment. MMS URL retrieval is unsupport
 - Release tooling tests passed: tag/version matching, exact-commit archives,
   dirty-tree rejection and dependency metadata.
 - libtxms Conan 2.32.0 static/shared packages and their separate C consumer passed
-  on macOS arm64 and Debian 12 arm64. The staged ConanCenter download recipe also
-  passed both configurations on both operating systems using the same checksummed
-  archive served by a local HTTP server.
-- ConanCenter metadata tests verify preserved older versions, idempotent updates,
-  refusal to replace a version checksum, and tampered-archive rejection.
+  on macOS arm64 and Debian 12 arm64.
 - macOS codec and gateway sanitizer suites passed after the CMake packaging changes.
-- No release or upstream ConanCenter PR was published. Hosted Windows packaging
+- No release was published during these local checks. Hosted Windows packaging
   and the actual GitHub publication steps remain to be exercised by CI after push.
 
 ## Database removal follow-up

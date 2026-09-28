@@ -1,7 +1,7 @@
 name: Release
 on:
-  push:
-    tags: ['[0-9]*.[0-9]*.[0-9]*']
+  release:
+    types: [published]
 permissions:
   contents: read
 concurrency:
@@ -9,19 +9,22 @@ concurrency:
   cancel-in-progress: false
 jobs:
   tests:
+    if: ${{ !github.event.release.prerelease }}
     uses: ./.github/workflows/ci.yml
   assets:
     needs: tests
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.ref_name }}
+      TAG: ${{ github.event.release.tag_name }}
+      LIBTXMS_VERSION: ${{ needs.tests.outputs.libtxms_version }}
+      LIBTXMS_COMMIT: ${{ needs.tests.outputs.libtxms_commit }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: Verify version and archive the tested commit
-        run: python tools/release.py --project kamailio-txms --tag "$TAG"
+        run: python tools/release.py --project kamailio-txms --tag "$TAG" --libtxms-version "$LIBTXMS_VERSION" --libtxms-commit "$LIBTXMS_COMMIT"
       - name: Checksum all release assets
         run: |
           cd dist
@@ -39,7 +42,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: ${{ github.ref_name }}
+      TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -47,5 +50,5 @@ jobs:
           path: dist
       - name: Verify downloaded assets
         run: cd dist && sha256sum --check SHA256SUMS
-      - name: Publish the tested release
-        run: gh release create "$TAG" dist/* --verify-tag --title "$TAG" --generate-notes
+      - name: Attach tested assets to the published release
+        run: gh release upload "$TAG" dist/*

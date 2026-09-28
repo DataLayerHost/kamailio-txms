@@ -181,42 +181,45 @@ The first release still needs provider interoperability tests, sustained load te
 
 ## GitHub releases and dependency versions
 
-[release.yml](.github/workflows/release.yml) publishes a GitHub Release when a
-stable `MAJOR.MINOR.PATCH` tag passes the complete CI workflow. The test gate
-includes macOS/Linux sanitizers, fuzz checks, release-tool validation and the
-live Kamailio integration test. The tag must match `CMakeLists.txt`.
+[release.yml](.github/workflows/release.yml) starts when a stable GitHub Release
+is **published**, using tags such as `0.1.0` without a `v` prefix. Publishing a
+release starts the complete CI workflow at its tagged commit. Assets are attached
+only after macOS/Linux sanitizers, fuzz checks, release-tool validation and live
+Kamailio integration pass. The release itself is already visible while tests run;
+a failed check prevents asset uploads. The tag must match `CMakeLists.txt`.
 
-[LIBTXMS_VERSION](LIBTXMS_VERSION) pins the libtxms release used by CI and recorded
-in release metadata. CMake rejects a local libtxms checkout with another version.
-**Publish the required libtxms tag before running gateway CI or releasing the
-module.** The initial dependency is `libtxms 0.1.0`; updating it is an explicit
-change to `LIBTXMS_VERSION` followed by the normal tests.
+Gateway CI always selects the latest published stable libtxms release through
+GitHub's `releases/latest` API. It resolves that release once per run, then uses
+the same exact commit for every build and test. Drafts and prereleases are excluded;
+a library release must exist before gateway CI can run. There is no branch fallback.
+The library tag must use `MAJOR.MINOR.PATCH` without `v` and match its CMake version.
 
-```sh
-# Commit and push the version changes first, then publish the matching tag:
-git tag -a 0.1.0 -m 'kamailio-txms 0.1.0'
-git push origin 0.1.0
-```
+There are no fixed library version or revision files to update. Each plugin
+release records the actual tested library version and commit in `release.json`.
+A new CI run picks up the latest release; an installed plugin changes only when
+rebuilt and deployed. Locally, check out the latest libtxms release as the sibling
+repository before building (the local build does not fetch or replace your checkout).
 
-After tests succeed, the workflow attaches `kamailio-txms-0.1.0.tar.gz`,
-`release.json` and `SHA256SUMS`, and generates release notes. The source archive
-contains the exact tested commit; metadata records the matching libtxms tag.
-The release job uses GitHub's repository token and never overwrites an existing
-release. No generic `txms.so` binary is distributed because it must be built
-against the operator's Kamailio ABI. Download the recorded libtxms release as a
-sibling and follow the build/install instructions above.
+Commit and push the workflow/version changes, then create and publish a GitHub
+Release for the matching tag (for example `0.1.0`) through GitHub's Releases page.
+Pushing a tag alone does not run the release workflow. Prereleases are skipped.
+
+After tests succeed, the workflow uploads `kamailio-txms-0.1.0.tar.gz`,
+`release.json` and `SHA256SUMS` to that existing release using the repository token.
+The source archive contains the exact tested commit. Existing assets are not
+overwritten. No generic `txms.so` binary is distributed because it must be built
+against the operator's Kamailio ABI. Check out the libtxms commit recorded in
+`release.json` as a sibling and follow the build/install instructions above.
 
 ## Conan and ignored files
 
-Conan packaging and ConanCenter submission automation live in
+Local Conan packaging lives in
 [libtxms](https://github.com/DataLayerHost/libtxms), the reusable C library.
 The native Kamailio plugin is distributed through this repository's source
-releases and built using Kamailio's build system. ConanCenter publication of
-libtxms requires a reviewed recipe PR; adding the automation does not itself
-publish the package.
+releases and built using Kamailio's build system. ConanCenter publication is disabled.
 
 Both repositories ignore generated build outputs, binaries, local Conan state,
 Python environments, generated CMake user presets and reference checkouts.
 No lockfiles are needed by the current build and none are committed. The library
-version is pinned explicitly, and release assets have SHA-256 checksums. Local
+version and commit are recorded per release, and assets have SHA-256 checksums. Local
 configuration stays ignored while `.env.example` remains tracked.
