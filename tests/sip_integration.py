@@ -1,4 +1,5 @@
 """Real Kamailio + UDP MESSAGE + local HTTP RPC integration; no public RPC calls."""
+from contextlib import suppress
 import http.server
 import json
 import os
@@ -64,7 +65,8 @@ request_route {{
 '''
 	(folder/'kamailio.cfg').write_text(config)
 	log = (folder/'server.log').open('w+')
-	process = subprocess.Popen([str(root/'src/kamailio'),'-D','-E','-f',str(folder/'kamailio.cfg'),'-L',str(root/'src/modules')],stdout=log,stderr=log,start_new_session=True)
+	# Keep runtime files writable for unprivileged CI users.
+	process = subprocess.Popen([str(root/'src/kamailio'),'-D','-E','-Y',str(folder),'-f',str(folder/'kamailio.cfg'),'-L',str(root/'src/modules')],stdout=log,stderr=log,start_new_session=True)
 	control = socket.socket(socket.AF_UNIX,socket.SOCK_DGRAM)
 	control.bind(str(folder/'client.sock')); control.settimeout(2)
 	def stats():
@@ -85,6 +87,8 @@ request_route {{
 			if process.poll() is not None: raise RuntimeError('Kamailio exited')
 			if (folder/'rpc.sock').exists(): time.sleep(.2); break
 			time.sleep(.1)
+		else:
+			raise RuntimeError('Kamailio did not create its RPC socket within 5 seconds')
 		send('0XAb'); send('0xab'); send('0xGG',expected=400)
 		send('0xcd\n0xef',inspect=True)
 		mime='--x\r\nContent-Type: text/plain\r\nContent-Disposition: attachment; filename=a.txms.txt\r\n\r\n0x1234\r\n--x\r\nContent-Type: text/plain\r\n\r\n0x5678\r\n--x--\r\n'
@@ -129,8 +133,13 @@ request_route {{
 	except BaseException:
 		log.flush(); log.seek(0); print(log.read(),file=sys.stderr); raise
 	finally:
-		os.killpg(process.pid,15)
+		# Startup may have failed, and the process can exit between poll and kill.
+		with suppress(ProcessLookupError):
+			os.killpg(process.pid,15)
 		try: process.wait(timeout=5)
-		except subprocess.TimeoutExpired: os.killpg(process.pid,9); process.wait()
+		except subprocess.TimeoutExpired:
+			with suppress(ProcessLookupError):
+				os.killpg(process.pid,9)
+			process.wait()
 		log.close(); sock.close(); control.close()
 http.shutdown(); http.server_close()
