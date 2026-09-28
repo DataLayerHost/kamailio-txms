@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible defect in kamailio-txms
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Commit, OS, compiler, dependency versions, and build options.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal synthetic input and commands. Remove credentials and private transaction data.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual results
+    validations:
+      required: true
