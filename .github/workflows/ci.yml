@@ -1,0 +1,115 @@
+name: Gateway CI
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      libtxms_version:
+        description: Tested library release version
+        value: ${{ jobs.dependency.outputs.version }}
+      libtxms_commit:
+        description: Tested library commit
+        value: ${{ jobs.dependency.outputs.commit }}
+permissions:
+  contents: read
+jobs:
+  dependency:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+      commit: ${{ steps.latest.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve latest published libtxms release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/latest_libtxms.py
+  core:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: kamailio-txms
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: kamailio-txms
+      - uses: actions/checkout@v4
+        with:
+          repository: DataLayerHost/libtxms
+          ref: ${{ needs.dependency.outputs.commit }}
+          path: libtxms
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libjson-c-dev libgmime-3.0-dev
+      - if: runner.os == 'macOS'
+        run: |
+          brew install pkg-config curl json-c gmime
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$(brew --prefix curl)/lib/pkgconfig" >> "$GITHUB_ENV"
+      - run: cmake -S . -B build -DCMAKE_C_COMPILER=clang -DTXMS_SANITIZE=ON
+      - run: cmake --build build -j2
+      - run: ctest --test-dir build --output-on-failure
+  kamailio:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: kamailio-txms
+      - uses: actions/checkout@v4
+        with:
+          repository: DataLayerHost/libtxms
+          ref: ${{ needs.dependency.outputs.commit }}
+          path: libtxms
+      - uses: actions/checkout@v4
+        with:
+          repository: kamailio/kamailio
+          ref: fc962fb165b7daad7885210763447bb215f1a0ef
+          path: kamailio
+      - run: sudo apt-get update && sudo apt-get install -y bison flex libssl-dev libpcre2-dev libcurl4-openssl-dev libjson-c-dev libgmime-3.0-dev
+      - run: |
+          cmake -S kamailio-txms -B kamailio-txms/build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build kamailio-txms/build -j2
+          cp -R kamailio-txms/module kamailio/src/modules/txms
+          make -C kamailio/src cfg include_modules="sl textops pv txms jsonrpcs"
+          make -C kamailio/src -j2 all TXMS_ROOT="$PWD/kamailio-txms" TXMS_BUILD="$PWD/kamailio-txms/build" LIBTXMS_ROOT="$PWD/libtxms"
+          python3 kamailio-txms/tests/sip_integration.py kamailio
+  fuzz:
+    needs: dependency
+    env:
+      LIBTXMS_EXPECTED_VERSION: ${{ needs.dependency.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: kamailio-txms
+      - uses: actions/checkout@v4
+        with:
+          repository: DataLayerHost/libtxms
+          ref: ${{ needs.dependency.outputs.commit }}
+          path: libtxms
+      - run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libjson-c-dev libgmime-3.0-dev
+      - run: |
+          cmake -S kamailio-txms -B build -DCMAKE_C_COMPILER=clang -DTXMS_SANITIZE=ON -DTXMS_FUZZ=ON
+          cmake --build build -j2
+          build/fuzz_sms kamailio-txms/fuzz/corpus/sms -runs=20000 -max_len=512
+          build/fuzz_udh kamailio-txms/fuzz/corpus/udh -runs=20000 -max_len=141
+          build/fuzz_mime kamailio-txms/fuzz/corpus/mime -runs=5000 -max_len=4096
+  release-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pyyaml
+      - run: python tests/test_release.py

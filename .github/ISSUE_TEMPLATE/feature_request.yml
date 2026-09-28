@@ -1,0 +1,13 @@
+name: Feature request
+description: Propose a specific improvement
+body:
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Protocol evidence and compatibility considerations

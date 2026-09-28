@@ -1,0 +1,54 @@
+name: Release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  tests:
+    if: ${{ !github.event.release.prerelease }}
+    uses: ./.github/workflows/ci.yml
+  assets:
+    needs: tests
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+      LIBTXMS_VERSION: ${{ needs.tests.outputs.libtxms_version }}
+      LIBTXMS_COMMIT: ${{ needs.tests.outputs.libtxms_commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify version and archive the tested commit
+        run: python tools/release.py --project kamailio-txms --tag "$TAG" --libtxms-version "$LIBTXMS_VERSION" --libtxms-commit "$LIBTXMS_COMMIT"
+      - name: Checksum all release assets
+        run: |
+          cd dist
+          sha256sum -- *.tar.gz release.json > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+  publish:
+    needs: [tests, assets]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist
+      - name: Verify downloaded assets
+        run: cd dist && sha256sum --check SHA256SUMS
+      - name: Attach tested assets to the published release
+        run: gh release upload "$TAG" dist/*

@@ -1,0 +1,51 @@
+# Build, package and compiler output
+/build*/
+/out/
+/dist/
+/release-stage/
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.pdb
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Local Conan state; no dependency lock is needed by the current recipes
+/conan.lock
+/.conan2/
+/test_package/build*/
+/test_package/CMakeUserPresets.json
+
+# Tool environments and reference checkouts
+/.venv/
+/reference-js/
+/reference-dart/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+*.swp
+*.swo
+
+# Local configuration, storage and fuzz findings
+.env
+.env.*
+!.env.example
+*.sqlite3*
+*.db*
+crash-*
+leak-*
+timeout-*
